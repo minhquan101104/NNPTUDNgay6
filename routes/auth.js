@@ -1,18 +1,23 @@
 let express = require('express')
 let router = express.Router()
 let userController = require('../controllers/users')
-let { RegisterValidator, validatedResult } = require('../utils/validator')
+let { RegisterValidator, validatedResult, ChangePasswordValidator } = require('../utils/validator')
 let bcrypt = require('bcrypt')
-let jwt = require('jsonwebtoken')
-const { check } = require('express-validator')
 const { checkLogin } = require('../utils/authHandler')
+const { signToken } = require('../utils/jwtHandler')
 
 router.post('/register', RegisterValidator, validatedResult, async function (req, res, next) {
-    let { username, password, email } = req.body;
-    let newUser = await userController.CreateAnUser(
-        username, password, email, '69b2763ce64fe93ca6985b56'
-    )
-    res.send(newUser)
+    try {
+        let { username, password, email } = req.body;
+        let newUser = await userController.CreateAnUser(
+            username, password, email, '69b2763ce64fe93ca6985b56'
+        )
+        res.send(newUser)
+    } catch (error) {
+        return res.status(400).send({
+            message: error.message
+        })
+    }
 })
 router.post('/login', async function (req, res, next) {
     let { username, password } = req.body;
@@ -27,10 +32,8 @@ router.post('/login', async function (req, res, next) {
         if (bcrypt.compareSync(password, user.password)) {
             user.loginCount = 0;
             await user.save();
-            let token = jwt.sign({
+            let token = signToken({
                 id: user._id,
-            }, 'secret', {
-                expiresIn: '1h'
             })
             res.send(token)
         } else {
@@ -52,7 +55,27 @@ router.post('/login', async function (req, res, next) {
 
 })
 router.get('/me',checkLogin, function (req,res,next) {
-    res.send(req.user)
+    let user = req.user.toObject()
+    delete user.password
+    res.send(user)
+})
+
+router.post('/change-password', checkLogin, ChangePasswordValidator, validatedResult, async function (req, res, next) {
+    let { oldpassword, newpassword } = req.body
+    let user = req.user
+
+    if (!bcrypt.compareSync(oldpassword, user.password)) {
+        return res.status(400).send({
+            message: 'oldpassword khong dung'
+        })
+    }
+
+    user.password = newpassword
+    await user.save()
+
+    return res.send({
+        message: 'doi mat khau thanh cong'
+    })
 })
 
 module.exports = router;
